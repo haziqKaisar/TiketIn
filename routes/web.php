@@ -1,4 +1,3 @@
-
 <?php
 
 use Illuminate\Support\Facades\Route;
@@ -7,6 +6,8 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\FrontEndController;
+use App\Http\Controllers\OrganizationRegistrationController;
+use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TicketCategoryController;
 use App\Http\Controllers\TicketController;
 
@@ -53,7 +54,8 @@ Route::post('/checkout', [CheckoutController::class, 'store'])
     ->name('checkout.store');
 
 // Callback pembayaran Tripay
-Route::post('/tripay/callback', [CheckoutController::class, 'callback']);
+Route::post('/tripay/callback', [CheckoutController::class, 'callback'])
+    ->name('tripay.callback');
 
 // =========================================================
 // 4. AUTHENTICATION
@@ -65,9 +67,7 @@ Route::get('/login', [AuthController::class, 'showLogin'])
 
 // Proses login
 Route::post('/login', [AuthController::class, 'login'])
-    ->name('login.post');
-    Route::post('/login', [AuthController::class, 'login'])
-    ->middleware('throttle:5,1') // maksimal 5 percobaan/menit per IP
+    ->middleware('throttle:5,1')
     ->name('login.post');
 
 // Logout
@@ -75,10 +75,30 @@ Route::post('/logout', [AuthController::class, 'logout'])
     ->name('logout');
 
 // =========================================================
-// 5. AREA ADMIN & PANITIA
+// 5. PENDAFTARAN ORGANISASI
 // =========================================================
 
-Route::middleware('auth')->group(function () {
+// Form pendaftaran organisasi
+Route::get('/daftar-organisasi', [OrganizationRegistrationController::class, 'create'])
+    ->name('organizations.register');
+
+// Proses pendaftaran organisasi
+Route::post('/daftar-organisasi', [OrganizationRegistrationController::class, 'store'])
+    ->middleware('throttle:5,1')
+    ->name('organizations.store');
+
+// Status organisasi untuk user yang sudah login
+// tetapi organisasinya belum disetujui
+Route::get('/organisasi/status', [OrganizationRegistrationController::class, 'pending'])
+    ->middleware('auth')
+    ->name('organizations.pending');
+
+// =========================================================
+// 6. AREA ADMIN & PANITIA
+// Hanya user login + organisasi sudah disetujui
+// =========================================================
+
+Route::middleware(['auth', 'org_approved'])->group(function () {
 
     // -----------------------------------------------------
     // Scanner Gate
@@ -148,3 +168,26 @@ Route::middleware('auth')->group(function () {
                 ->name('orders.markPaid');
         });
 });
+
+// =========================================================
+// 7. AREA KHUSUS SUPER ADMIN
+// Login + harus super_admin
+// =========================================================
+
+Route::middleware(['auth', 'super_admin'])
+    ->prefix('super-admin')
+    ->name('superadmin.')
+    ->group(function () {
+
+        // Daftar organisasi
+        Route::get('/organizations', [SuperAdminController::class, 'organizationIndex'])
+            ->name('organizations.index');
+
+        // Setujui organisasi
+        Route::post('/organizations/{organization}/approve', [SuperAdminController::class, 'organizationApprove'])
+            ->name('organizations.approve');
+
+        // Tolak organisasi
+        Route::post('/organizations/{organization}/reject', [SuperAdminController::class, 'organizationReject'])
+            ->name('organizations.reject');
+    });

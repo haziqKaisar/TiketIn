@@ -115,6 +115,9 @@
                             <div class="h-6 w-px bg-white/20 mx-1" aria-hidden="true"></div>
                             <a href="{{ route('admin.dashboard') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Dashboard</a>
                             <a href="{{ route('scan.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Scanner Gerbang</a>
+                            @if(auth()->user()->isSuperAdmin())
+                                <a href="{{ route('superadmin.organizations.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Kelola Organisasi</a>
+                            @endif
 
                             <form action="{{ route('logout') }}" method="POST" class="m-0">
                                 @csrf
@@ -123,6 +126,7 @@
                                 </button>
                             </form>
                         @else
+                            <a href="{{ route('organizations.register') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Daftar Organisasi</a>
                             <a href="{{ route('login') }}" class="bg-brand-accent text-ink hover:bg-brand-accent-dark active:scale-[0.98] px-5 py-2.5 rounded-lg font-semibold shadow-soft transition-all min-h-[44px] flex items-center ml-1">
                                 Login Panitia
                             </a>
@@ -158,11 +162,15 @@
                     @auth
                         <a href="{{ route('admin.dashboard') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Dashboard</a>
                         <a href="{{ route('scan.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Scanner Gerbang</a>
+                        @if(auth()->user()->isSuperAdmin())
+                            <a href="{{ route('superadmin.organizations.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Kelola Organisasi</a>
+                        @endif
                         <form action="{{ route('logout') }}" method="POST">
                             @csrf
                             <button type="submit" class="w-full text-left text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px]">Keluar</button>
                         </form>
                     @else
+                        <a href="{{ route('organizations.register') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Daftar Organisasi</a>
                         <a href="{{ route('login') }}" class="bg-brand-accent text-ink px-3 py-3 rounded-lg font-semibold min-h-[44px] flex items-center justify-center mt-1">Login Panitia</a>
                     @endauth
                 </div>

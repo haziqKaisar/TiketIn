@@ -33,18 +33,17 @@ class ETicketMail extends Mailable
     {
         $qrService = app(QrCodeService::class);
 
-        // Generate PNG binary untuk SETIAP tiket dalam order ini (bisa lebih
-        // dari satu kalau customer beli beberapa tiket sekaligus), key-nya
-        // dipakai lagi di view lewat $message->embedData(...).
-        $qrBinaries = $this->order->tickets->mapWithKeys(function ($ticket) use ($qrService) {
-            return [$ticket->id => $qrService->pngBinary($ticket->ticket_code)];
+        // SVG markup per tiket (bisa lebih dari satu kalau order berisi
+        // beberapa tiket sekaligus), di-render langsung inline di blade.
+        $qrSvgs = $this->order->tickets->mapWithKeys(function ($ticket) use ($qrService) {
+            return [$ticket->id => $qrService->svgMarkup($ticket->ticket_code, 160)];
         });
 
         return new Content(
             view: 'emails.eticket',
             with: [
-                'order'      => $this->order,
-                'qrBinaries' => $qrBinaries,
+                'order'  => $this->order,
+                'qrSvgs' => $qrSvgs,
             ],
         );
     }

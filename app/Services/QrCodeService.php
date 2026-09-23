@@ -2,24 +2,20 @@
 
 namespace App\Services;
 
-use BaconQrCode\Renderer\GDLibRenderer;
-use BaconQrCode\Writer;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class QrCodeService
 {
     /**
-     * Hasilkan QR code sebagai PNG binary (raw bytes), untuk dilampirkan
-     * atau di-embed ke email.
+     * Hasilkan QR code sebagai markup SVG (string).
      *
-     * SENGAJA pakai GDLibRenderer, BUKAN ImagickImageBackEnd — GD sudah
-     * built-in di PHP (hampir pasti aktif, termasuk di Laragon & kebanyakan
-     * hosting produksi), jadi tidak butuh extension/binary tambahan apa pun.
+     * SENGAJA pakai SVG (bukan PNG lewat Imagick/GD) — ini format yang
+     * SUDAH TERBUKTI jalan di project ini (dipakai juga di halaman e-tiket
+     * publik), tidak butuh extension PHP tambahan apa pun, dan tidak
+     * tergantung versi bacon/bacon-qr-code yang ter-install.
      */
-    public function pngBinary(string $text, int $size = 400): string
+    public function svgMarkup(string $text, int $size = 200): string
     {
-        $renderer = new GDLibRenderer($size);
-        $writer   = new Writer($renderer);
-
-        return $writer->writeString($text);
+        return QrCode::size($size)->generate($text);
     }
 }

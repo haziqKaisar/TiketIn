@@ -52,11 +52,7 @@
                                 </tr>
                                 <tr>
                                     <td align="center" style="padding: 20px; background-color:#FFFFFF;">
-                                        <img
-                                            src="{{ $message->embedData($qrBinaries[$ticket->id], 'qr-' . $ticket->id . '.png', 'image/png') }}"
-                                            width="160" height="160" alt="QR Code Tiket"
-                                            style="display:block; border: 1px solid #E5E7EB; border-radius: 8px;"
-                                        >
+                                        {!! $qrSvgs[$ticket->id] !!}
                                         <p style="margin: 10px 0 0; font-size: 12px; color:#9CA3AF; font-family: monospace;">
                                             {{ $ticket->ticket_code }}
                                         </p>

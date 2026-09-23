@@ -17,6 +17,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'tripay/callback',
         ]);
+
+        // Middleware aliases
+        $middleware->alias([
+            'super_admin' => \App\Http\Middleware\EnsureIsSuperAdmin::class,
+            'org_approved' => \App\Http\Middleware\EnsureOrganizationApproved::class,
+        ]);
     })
 
     ->withExceptions(function (Exceptions $exceptions): void {

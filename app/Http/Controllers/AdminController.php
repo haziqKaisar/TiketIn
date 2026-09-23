@@ -5,33 +5,66 @@ namespace App\Http\Controllers;
 use App\Jobs\SendETicketJob;
 use App\Models\Event;
 use App\Models\Order;
+use App\Models\Organization;
 use App\Models\Ticket;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class AdminController extends Controller
 {
+    /**
+     * ID organisasi milik user yang login, atau NULL kalau dia super_admin
+     * (artinya: jangan difilter sama sekali, tampilkan semua organisasi).
+     */
+    private function currentOrganizationId(): ?int
+    {
+        $user = Auth::user();
+
+        return $user->isSuperAdmin() ? null : $user->organization_id;
+    }
+
+    /**
+     * Pastikan $event ini benar-benar milik organisasi user yang login.
+     * Super admin selalu lolos. Ini yang mencegah org_admin satu
+     * organisasi mengedit/menghapus event organisasi lain lewat ubah ID.
+     */
+    private function authorizeOrganizationOwnership(Event $event): void
+    {
+        $orgId = $this->currentOrganizationId();
+
+        if ($orgId !== null && $event->organization_id !== $orgId) {
+            abort(403, 'Kamu tidak punya akses ke event ini.');
+        }
+    }
+
     // =========================================================
     // 1. DASHBOARD STATISTIK
     // =========================================================
     public function dashboard()
     {
-        $revenue = Order::where('status', 'PAID')
-            ->sum('total_amount');
+        $orgId = $this->currentOrganizationId();
 
-        $ticketsSold = Ticket::whereIn('status', [
-            'AVAILABLE',
-            'SCANNED',
-        ])->count();
+        $scopeByOrg = fn ($query, string $relation) => $orgId
+            ? $query->whereHas($relation, fn ($q) => $q->where('organization_id', $orgId))
+            : $query;
 
-        $checkedIn = Ticket::where('status', 'SCANNED')
-            ->count();
+        $revenue = $scopeByOrg(
+            Order::where('status', 'PAID'),
+            'tickets.ticketCategory.event'
+        )->sum('total_amount');
 
-        return view('admin.dashboard', compact(
-            'revenue',
-            'ticketsSold',
-            'checkedIn'
-        ));
+        $ticketsSold = $scopeByOrg(
+            Ticket::whereIn('status', ['AVAILABLE', 'SCANNED']),
+            'ticketCategory.event'
+        )->count();
+
+        $checkedIn = $scopeByOrg(
+            Ticket::where('status', 'SCANNED'),
+            'ticketCategory.event'
+        )->count();
+
+        return view('admin.dashboard', compact('revenue', 'ticketsSold', 'checkedIn'));
     }
 
     // =========================================================
@@ -39,7 +72,10 @@ class AdminController extends Controller
     // =========================================================
     public function eventIndex()
     {
-        $events = Event::orderBy('event_date', 'desc')
+        $orgId = $this->currentOrganizationId();
+
+        $events = Event::when($orgId, fn ($q) => $q->where('organization_id', $orgId))
+            ->orderBy('event_date', 'desc')
             ->get();
 
         return view('admin.events.index', compact('events'));
@@ -66,17 +102,19 @@ class AdminController extends Controller
             'poster'      => 'nullable|image|mimes:jpg,png,jpeg|max:2048',
         ]);
 
-        // Upload poster
         if ($request->hasFile('poster')) {
-            $data['poster'] = $request->file('poster')
-                ->store('posters', 'public');
+            $data['poster'] = $request->file('poster')->store('posters', 'public');
         }
+
+        // Event baru otomatis milik organisasi user yang login. Kalau yang
+        // bikin super_admin (tidak terikat organisasi manapun), masukkan
+        // ke organisasi pertama yang ada sebagai fallback.
+        $data['organization_id'] = Auth::user()->organization_id
+            ?? Organization::query()->value('id');
 
         Event::create($data);
 
-        return redirect()
-            ->route('admin.events.index')
-            ->with('success', 'Event berhasil ditambahkan!');
+        return redirect()->route('admin.events.index')->with('success', 'Event berhasil ditambahkan!');
     }
 
     // =========================================================
@@ -84,6 +122,8 @@ class AdminController extends Controller
     // =========================================================
     public function eventEdit(Event $event)
     {
+        $this->authorizeOrganizationOwnership($event);
+
         return view('admin.events.form', compact('event'));
     }
 
@@ -92,6 +132,8 @@ class AdminController extends Controller
     // =========================================================
     public function eventUpdate(Request $request, Event $event)
     {
+        $this->authorizeOrganizationOwnership($event);
+
         $data = $request->validate([
             'name'        => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -101,23 +143,16 @@ class AdminController extends Controller
             'is_active'   => 'required|boolean',
         ]);
 
-        // Upload poster baru
         if ($request->hasFile('poster')) {
-            // Hapus poster lama
             if ($event->poster) {
                 Storage::disk('public')->delete($event->poster);
             }
-
-            // Simpan poster baru
-            $data['poster'] = $request->file('poster')
-                ->store('posters', 'public');
+            $data['poster'] = $request->file('poster')->store('posters', 'public');
         }
 
         $event->update($data);
 
-        return redirect()
-            ->route('admin.events.index')
-            ->with('success', 'Event berhasil diperbarui!');
+        return redirect()->route('admin.events.index')->with('success', 'Event berhasil diperbarui!');
     }
 
     // =========================================================
@@ -125,17 +160,15 @@ class AdminController extends Controller
     // =========================================================
     public function eventDestroy(Event $event)
     {
-        // Hapus poster
+        $this->authorizeOrganizationOwnership($event);
+
         if ($event->poster) {
             Storage::disk('public')->delete($event->poster);
         }
 
-        // Hapus event
         $event->delete();
 
-        return redirect()
-            ->route('admin.events.index')
-            ->with('success', 'Event berhasil dihapus!');
+        return redirect()->route('admin.events.index')->with('success', 'Event berhasil dihapus!');
     }
 
     // =========================================================
@@ -143,9 +176,13 @@ class AdminController extends Controller
     // =========================================================
     public function orderIndex()
     {
-        $orders = Order::with([
-            'tickets.ticketCategory.event',
-        ])
+        $orgId = $this->currentOrganizationId();
+
+        $orders = Order::with(['tickets.ticketCategory.event'])
+            ->when($orgId, fn ($q) => $q->whereHas(
+                'tickets.ticketCategory.event',
+                fn ($q2) => $q2->where('organization_id', $orgId)
+            ))
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -157,25 +194,26 @@ class AdminController extends Controller
     // =========================================================
     public function orderMarkPaid(Order $order)
     {
-        if ($order->status === 'UNPAID') {
-            // Ubah status order menjadi PAID
-            $order->update(['status' => 'PAID']);
+        $orgId = $this->currentOrganizationId();
 
-            // Ubah status semua tiket menjadi AVAILABLE
-            Ticket::where('order_id', $order->id)->update(['status' => 'AVAILABLE']);
+        if ($orgId !== null) {
+            $eventOrgId = optional(
+                optional($order->tickets->first())->ticketCategory?->event
+            )->organization_id;
 
-            // Kirim E-Ticket via Queue Job
-            SendETicketJob::dispatch($order->id);
-
-            return back()->with(
-                'success',
-                'Status pesanan berhasil diubah menjadi PAID! E-Ticket sedang dikirim.'
-            );
+            if ($eventOrgId !== $orgId) {
+                abort(403, 'Kamu tidak punya akses ke pesanan ini.');
+            }
         }
 
-        return back()->with(
-            'error',
-            'Pesanan sudah diproses sebelumnya.'
-        );
+        if ($order->status === 'UNPAID') {
+            $order->update(['status' => 'PAID']);
+            Ticket::where('order_id', $order->id)->update(['status' => 'AVAILABLE']);
+            SendETicketJob::dispatch($order->id);
+
+            return back()->with('success', 'Status pesanan berhasil diubah menjadi PAID! E-Ticket sedang dikirim.');
+        }
+
+        return back()->with('error', 'Pesanan sudah diproses sebelumnya.');
     }
 }

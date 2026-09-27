@@ -20,6 +20,9 @@ use App\Http\Controllers\TicketController;
 Route::get('/', [FrontEndController::class, 'index'])
     ->name('home');
 
+ Route::get('/jelajahi', [\App\Http\Controllers\FrontEndController::class, 'marketplace'])
+    ->name('marketplace.index');
+
 // Detail event
 Route::get('/event/{event}', [FrontEndController::class, 'show'])
     ->name('event.show');

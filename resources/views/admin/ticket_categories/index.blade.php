@@ -33,6 +33,12 @@
                         class="w-full min-h-[44px] border border-gray-300 px-3.5 py-2.5 rounded-lg focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-colors">
                 </div>
                 <div>
+                    <label for="cat_description" class="block text-sm font-semibold text-ink mb-1.5">Deskripsi Tiket</label>
+                    <textarea id="cat_description" name="description" rows="3" placeholder="Jelaskan apa yang didapat pembeli di kategori ini, mis. akses area depan, merchandise, dll." required
+                        class="w-full border border-gray-300 px-3.5 py-2.5 rounded-lg focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-colors"></textarea>
+                    <p class="text-xs text-ink-muted mt-1">Ditampilkan ke calon pembeli di halaman detail event.</p>
+                </div>
+                <div>
                     <label for="cat_price" class="block text-sm font-semibold text-ink mb-1.5">Harga (Rp)</label>
                     <input id="cat_price" type="number" name="price" min="0" placeholder="50000" required
                         class="w-full min-h-[44px] border border-gray-300 px-3.5 py-2.5 rounded-lg focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-colors">
@@ -62,7 +68,12 @@
                 <tbody>
                     @forelse($categories as $category)
                     <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50/70">
-                        <td class="p-4 font-semibold text-ink">{{ $category->name }}</td>
+                        <td class="p-4 font-semibold text-ink">
+                            {{ $category->name }}
+                            @if($category->description)
+                                <p class="text-xs font-normal text-ink-muted mt-0.5 max-w-xs truncate" title="{{ $category->description }}">{{ $category->description }}</p>
+                            @endif
+                        </td>
                         <td class="p-4 text-ink">Rp {{ number_format($category->price, 0, ',', '.') }}</td>
                         <td class="p-4">
                             <span class="bg-brand-primary-soft text-brand-primary font-bold px-2.5 py-1 rounded-full text-xs">{{ $category->quota }}</span>
@@ -89,7 +100,10 @@
             <article class="bg-white rounded-2xl shadow-soft border border-gray-100 p-4 flex items-center justify-between gap-3">
                 <div class="min-w-0">
                     <p class="font-semibold text-ink truncate">{{ $category->name }}</p>
-                    <p class="text-sm text-ink-muted">Rp {{ number_format($category->price, 0, ',', '.') }}</p>
+                    @if($category->description)
+                        <p class="text-xs text-ink-muted mt-0.5 line-clamp-2">{{ $category->description }}</p>
+                    @endif
+                    <p class="text-sm text-ink-muted mt-1">Rp {{ number_format($category->price, 0, ',', '.') }}</p>
                     <span class="inline-block mt-1 bg-brand-primary-soft text-brand-primary font-bold px-2.5 py-0.5 rounded-full text-xs">Sisa {{ $category->quota }}</span>
                 </div>
                 <form action="{{ route('admin.categories.destroy', $category->id) }}" method="POST" onsubmit="return confirm('Hapus tiket ini?');">

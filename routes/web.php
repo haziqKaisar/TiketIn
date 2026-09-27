@@ -6,6 +6,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\FrontEndController;
+use App\Http\Controllers\OrganizationProfileController;
 use App\Http\Controllers\OrganizationRegistrationController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TicketCategoryController;
@@ -95,7 +96,7 @@ Route::get('/organisasi/status', [OrganizationRegistrationController::class, 'pe
 
 // =========================================================
 // 6. AREA ADMIN & PANITIA
-// Hanya user login + organisasi sudah disetujui
+// Login + organisasi sudah disetujui
 // =========================================================
 
 Route::middleware(['auth', 'org_approved'])->group(function () {
@@ -121,6 +122,16 @@ Route::middleware(['auth', 'org_approved'])->group(function () {
             // Dashboard
             Route::get('/dashboard', [AdminController::class, 'dashboard'])
                 ->name('dashboard');
+
+            // -------------------------------------------------
+            // Profil Organisasi
+            // -------------------------------------------------
+
+            Route::get('/organisasi', [OrganizationProfileController::class, 'edit'])
+                ->name('organization.edit');
+
+            Route::put('/organisasi', [OrganizationProfileController::class, 'update'])
+                ->name('organization.update');
 
             // -------------------------------------------------
             // CRUD Event

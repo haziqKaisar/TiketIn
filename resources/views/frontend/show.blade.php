@@ -19,6 +19,12 @@
             </div>
 
             <div class="p-6 md:p-8">
+                @if($event->organization)
+                    <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-primary bg-brand-primary-soft px-2.5 py-1 rounded-full mb-3">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l8-4v18M13 9h6v12"/></svg>
+                        Diselenggarakan oleh {{ $event->organization->name }}
+                    </span>
+                @endif
                 <h1 class="text-2xl md:text-3xl font-extrabold text-ink leading-tight">{{ $event->name }}</h1>
 
                 <div class="mt-4 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-x-6 sm:gap-y-2 text-sm text-ink-muted pb-6 border-b border-gray-100">
@@ -34,6 +40,23 @@
 
                 <h2 class="text-lg font-bold text-ink mt-6 mb-2">Tentang Acara</h2>
                 <p class="text-ink-muted leading-relaxed whitespace-pre-line">{{ $event->description }}</p>
+
+                @if($event->ticketCategories->isNotEmpty())
+                    <h2 class="text-lg font-bold text-ink mt-8 mb-3">Detail Kategori Tiket</h2>
+                    <div class="space-y-3">
+                        @foreach($event->ticketCategories as $category)
+                            <div class="border border-gray-100 rounded-xl p-4">
+                                <div class="flex items-center justify-between gap-3 mb-1">
+                                    <h3 class="font-bold text-ink">{{ $category->name }}</h3>
+                                    <span class="text-sm font-bold text-brand-primary shrink-0">Rp {{ number_format($category->price, 0, ',', '.') }}</span>
+                                </div>
+                                @if($category->description)
+                                    <p class="text-sm text-ink-muted leading-relaxed whitespace-pre-line">{{ $category->description }}</p>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </article>
 

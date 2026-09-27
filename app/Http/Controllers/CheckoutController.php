@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\InsufficientQuotaException;
 use App\Jobs\SendETicketJob;
 use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\TicketCategory;
+use App\Services\OrderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -13,10 +15,6 @@ use Illuminate\Support\Str;
 
 class CheckoutController extends Controller
 {
-    /**
-     * Batas jumlah tiket maksimal per transaksi.
-     * Samakan angka ini dengan batas stepper di show.blade.php.
-     */
     private const MAX_QTY_PER_ORDER = 10;
 
     /**
@@ -24,7 +22,6 @@ class CheckoutController extends Controller
      */
     public function store(Request $request)
     {
-        // 1. Validasi Input Form
         $request->validate([
             'customer_name'      => 'required|string|max:255',
             'customer_email'     => 'required|email',
@@ -34,29 +31,32 @@ class CheckoutController extends Controller
             'quantity'           => 'nullable|integer|min:1|max:' . self::MAX_QTY_PER_ORDER,
         ]);
 
-        // Server yang menentukan quantity final — JANGAN percaya begitu saja
-        // angka dari form, siapa pun bisa kirim request manual dengan angka lain.
-        $quantity = (int) $request->input('quantity', 1);
-
-        // 2. Cek Sisa Kuota Tiket
-        $category = TicketCategory::findOrFail($request->ticket_category_id);
-        if ($category->quota < $quantity) {
-            return back()->with('error', "Maaf, sisa kuota tiket ini cuma {$category->quota}.");
-        }
-
-        // Sebelumnya: 'TKT-' . time() . Str::random(3) — bagian time() gampang
-        // ditebak rentangnya, dan cuma 3 karakter acak (~238rb kombinasi) bisa
-        // di-brute-force. Sekarang murni acak dengan keyspace yang jauh lebih besar
-        // (62^16 kombinasi), sekaligus jadi identifier publik di URL e-tiket
-        // (route ticket.show), jadi WAJIB tidak gampang ditebak.
+        $quantity    = (int) $request->input('quantity', 1);
         $merchantRef = 'TKT-' . strtoupper(Str::random(16));
-        $amount      = $category->price * $quantity; // total, bukan harga satuan
 
-        // 3-5. Simpan Order + N baris Tiket + potong kuota, dibungkus transaction
-        // supaya kalau salah satu langkah gagal, semuanya batal bareng (tidak
-        // ada order "nyangkut" tanpa tiket, atau tiket tanpa order).
+        // Semua pengecekan + penulisan data dibungkus 1 transaction dengan
+        // row lock (lockForUpdate) di baris TicketCategory-nya. Ini yang
+        // mencegah race condition: kalau 2 orang checkout tiket terakhir
+        // yang sama nyaris bersamaan, permintaan KEDUA akan menunggu
+        // sampai transaction PERTAMA selesai (commit/rollback) sebelum
+        // dia sendiri baca ulang sisa kuota — jadi tidak mungkin dua-duanya
+        // lolos pengecekan kuota yang sama.
         try {
-            $order = DB::transaction(function () use ($request, $category, $quantity, $merchantRef, $amount) {
+            [$order, $category, $amount] = DB::transaction(function () use ($request, $quantity, $merchantRef) {
+                $category = TicketCategory::where('id', $request->ticket_category_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $category) {
+                    throw new InsufficientQuotaException('Kategori tiket tidak ditemukan.');
+                }
+
+                if ($category->quota < $quantity) {
+                    throw new InsufficientQuotaException("Maaf, sisa kuota tiket ini cuma {$category->quota}.");
+                }
+
+                $amount = $category->price * $quantity;
+
                 $order = Order::create([
                     'merchant_ref'   => $merchantRef,
                     'customer_name'  => $request->customer_name,
@@ -67,8 +67,6 @@ class CheckoutController extends Controller
                     'status'         => 'UNPAID',
                 ]);
 
-                // Buat SATU baris Ticket untuk SETIAP tiket yang dibeli,
-                // masing-masing dengan ticket_code unik sendiri.
                 for ($i = 0; $i < $quantity; $i++) {
                     Ticket::create([
                         'order_id'           => $order->id,
@@ -78,16 +76,19 @@ class CheckoutController extends Controller
                     ]);
                 }
 
+                // Masih di dalam transaction & row masih terkunci -- aman.
                 $category->decrement('quota', $quantity);
 
-                return $order;
+                return [$order, $category, $amount];
             });
+        } catch (InsufficientQuotaException $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             report($e);
             return back()->with('error', 'Gagal menyimpan pesanan, coba lagi.');
         }
 
-        // 6. Siapkan Data & Signature untuk API Tripay
+        // Siapkan Data & Signature untuk API Tripay
         $apiKey       = env('TRIPAY_API_KEY');
         $privateKey   = env('TRIPAY_PRIVATE_KEY');
         $merchantCode = env('TRIPAY_MERCHANT_CODE');
@@ -106,16 +107,15 @@ class CheckoutController extends Controller
                 [
                     'sku'      => 'TKT-' . $category->id,
                     'name'     => 'Tiket: ' . $category->name,
-                    'price'    => $category->price, // harga SATUAN
-                    'quantity' => $quantity,         // dikali otomatis oleh Tripay
+                    'price'    => $category->price,
+                    'quantity' => $quantity,
                 ],
             ],
             'return_url'   => route('home'),
-            'expired_time' => time() + (24 * 60 * 60), // Expired 24 Jam
+            'expired_time' => time() + (24 * 60 * 60),
             'signature'    => $signature,
         ];
 
-        // 7. Tembak API Tripay
         $response = Http::asForm()->withHeaders([
             'Authorization' => 'Bearer ' . $apiKey,
         ])->post($endpoint, $payload);
@@ -128,13 +128,9 @@ class CheckoutController extends Controller
             }
         }
 
-        // 8. Kalau Tripay gagal: batalkan SEMUA yang tadi dibuat (bukan cuma
-        // kembalikan kuota, tapi juga hapus order+tiket "PENDING" yang nyangkut).
-        DB::transaction(function () use ($order, $category, $quantity) {
-            $category->increment('quota', $quantity);
-            Ticket::where('order_id', $order->id)->delete();
-            $order->delete();
-        });
+        // Tripay gagal: batalkan semua yang tadi dibuat (kuota, order, tiket)
+        // lewat service yang sama dipakai webhook & cleanup job.
+        app(OrderService::class)->releaseUnpaidOrder($order, 'FAILED');
 
         $errorMessage = $response->json('message') ?? 'Gagal terhubung ke server pembayaran.';
 
@@ -166,28 +162,12 @@ class CheckoutController extends Controller
             return response()->json(['success' => false, 'message' => 'Order not found'], 404);
         }
 
-        // 1. Jika Pembayaran Lunas
         if ($data->status === 'PAID' && $order->status === 'UNPAID') {
             $order->update(['status' => 'PAID']);
-
-            // Aktifkan SEMUA tiket dalam order ini (bukan cuma satu)
             Ticket::where('order_id', $order->id)->update(['status' => 'AVAILABLE']);
-
             SendETicketJob::dispatch($order->id)->afterCommit();
-        }
-        // 2. Jika Pembayaran Batal/Expired
-        elseif (in_array($data->status, ['EXPIRED', 'FAILED']) && $order->status === 'UNPAID') {
-            $order->update(['status' => $data->status]);
-
-            // Kembalikan kuota SESUAI JUMLAH tiket yang ada di order ini,
-            // bukan cuma +1 — lalu hapus semua tiket PENDING-nya.
-            $tickets = Ticket::where('order_id', $order->id)->get();
-            if ($tickets->isNotEmpty()) {
-                TicketCategory::where('id', $tickets->first()->ticket_category_id)
-                    ->increment('quota', $tickets->count());
-
-                Ticket::where('order_id', $order->id)->delete();
-            }
+        } elseif (in_array($data->status, ['EXPIRED', 'FAILED']) && $order->status === 'UNPAID') {
+            app(OrderService::class)->releaseUnpaidOrder($order, $data->status);
         }
 
         return response()->json(['success' => true]);

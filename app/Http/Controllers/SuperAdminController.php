@@ -37,6 +37,12 @@ class SuperAdminController extends Controller
             'rejected_reason' => $request->input('reason'),
         ]);
 
-        return back()->with('success', "Organisasi \"{$organization->name}\" ditolak.");
+        // Hapus akun admin yang terhubung ke organisasi ini. Organisasinya
+        // sendiri TETAP disimpan (buat riwayat/audit, status = rejected),
+        // tapi akun login-nya dihapus supaya emailnya bebas dipakai lagi
+        // kalau mereka mau coba daftar ulang.
+        $organization->users()->delete();
+
+        return back()->with('success', "Organisasi \"{$organization->name}\" ditolak. Email admin-nya sudah dibebaskan, mereka bisa daftar ulang kalau mau.");
     }
 }

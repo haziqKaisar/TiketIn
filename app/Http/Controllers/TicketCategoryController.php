@@ -12,31 +12,44 @@ class TicketCategoryController extends Controller
     public function index(Event $event)
     {
         $categories = $event->ticketCategories;
-        return view('admin.ticket_categories.index', compact('event', 'categories'));
+
+        return view(
+            'admin.ticket_categories.index',
+            compact('event', 'categories')
+        );
     }
 
     // Menyimpan kategori tiket baru
     public function store(Request $request, Event $event)
     {
-        $request->validate([
-            'name'  => 'required|string|max:255',
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'required|string|max:1000',
             'price' => 'required|numeric|min:0',
             'quota' => 'required|integer|min:1',
         ]);
 
         $event->ticketCategories()->create([
-            'name'  => $request->name,
-            'price' => $request->price,
-            'quota' => $request->quota,
+            'name' => $data['name'],
+            'description' => $data['description'],
+            'price' => $data['price'],
+            'quota' => $data['quota'],
         ]);
 
-        return back()->with('success', 'Kategori tiket berhasil ditambahkan!');
+        return back()->with(
+            'success',
+            'Kategori tiket berhasil ditambahkan!'
+        );
     }
 
     // Menghapus kategori tiket
     public function destroy(TicketCategory $category)
     {
         $category->delete();
-        return back()->with('success', 'Kategori tiket berhasil dihapus!');
+
+        return back()->with(
+            'success',
+            'Kategori tiket berhasil dihapus!'
+        );
     }
 }

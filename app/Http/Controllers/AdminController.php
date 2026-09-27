@@ -162,6 +162,21 @@ class AdminController extends Controller
     {
         $this->authorizeOrganizationOwnership($event);
 
+        // Jangan biarkan event yang sudah punya tiket terjual/lunas dihapus
+        // begitu saja -- itu berarti ada pembeli sungguhan yang datanya
+        // (dan e-tiketnya) bisa ikut hilang tanpa peringatan apa pun.
+        $hasSoldTickets = Ticket::whereHas(
+            'ticketCategory',
+            fn ($q) => $q->where('event_id', $event->id)
+        )->whereIn('status', ['AVAILABLE', 'SCANNED'])->exists();
+
+        if ($hasSoldTickets) {
+            return back()->with(
+                'error',
+                'Event ini tidak bisa dihapus karena sudah ada tiket yang terjual. Nonaktifkan saja (ubah status jadi "Tutup") kalau tidak ingin menerima pendaftaran baru.'
+            );
+        }
+
         if ($event->poster) {
             Storage::disk('public')->delete($event->poster);
         }

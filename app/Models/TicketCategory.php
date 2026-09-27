@@ -9,7 +9,13 @@ class TicketCategory extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['event_id', 'name', 'price', 'quota'];
+    protected $fillable = [
+        'event_id',
+        'name',
+        'description',
+        'price',
+        'quota',
+    ];
 
     // Relasi: Kategori Tiket ini milik 1 Event
     public function event()

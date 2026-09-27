@@ -117,6 +117,8 @@
                             <a href="{{ route('scan.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Scanner Gerbang</a>
                             @if(auth()->user()->isSuperAdmin())
                                 <a href="{{ route('superadmin.organizations.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Kelola Organisasi</a>
+                            @else
+                                <a href="{{ route('admin.organization.edit') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Profil Organisasi</a>
                             @endif
 
                             <form action="{{ route('logout') }}" method="POST" class="m-0">
@@ -164,6 +166,8 @@
                         <a href="{{ route('scan.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Scanner Gerbang</a>
                         @if(auth()->user()->isSuperAdmin())
                             <a href="{{ route('superadmin.organizations.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Kelola Organisasi</a>
+                        @else
+                            <a href="{{ route('admin.organization.edit') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Profil Organisasi</a>
                         @endif
                         <form action="{{ route('logout') }}" method="POST">
                             @csrf

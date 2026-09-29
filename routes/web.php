@@ -11,6 +11,7 @@ use App\Http\Controllers\OrganizationRegistrationController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TicketCategoryController;
 use App\Http\Controllers\TicketController;
+use App\Http\Controllers\WithdrawalController;
 
 // =========================================================
 // 1. HALAMAN PUBLIK
@@ -20,7 +21,8 @@ use App\Http\Controllers\TicketController;
 Route::get('/', [FrontEndController::class, 'index'])
     ->name('home');
 
- Route::get('/jelajahi', [\App\Http\Controllers\FrontEndController::class, 'marketplace'])
+// Marketplace / Jelajahi
+Route::get('/jelajahi', [FrontEndController::class, 'marketplace'])
     ->name('marketplace.index');
 
 // Detail event
@@ -91,8 +93,7 @@ Route::post('/daftar-organisasi', [OrganizationRegistrationController::class, 's
     ->middleware('throttle:5,1')
     ->name('organizations.store');
 
-// Status organisasi untuk user yang sudah login
-// tetapi organisasinya belum disetujui
+// Status organisasi
 Route::get('/organisasi/status', [OrganizationRegistrationController::class, 'pending'])
     ->middleware('auth')
     ->name('organizations.pending');
@@ -180,6 +181,16 @@ Route::middleware(['auth', 'org_approved'])->group(function () {
 
             Route::post('/orders/{order}/mark-paid', [AdminController::class, 'orderMarkPaid'])
                 ->name('orders.markPaid');
+
+            // -------------------------------------------------
+            // Penarikan Dana
+            // -------------------------------------------------
+
+            Route::get('/penarikan', [WithdrawalController::class, 'index'])
+                ->name('withdrawals.index');
+
+            Route::post('/penarikan', [WithdrawalController::class, 'store'])
+                ->name('withdrawals.store');
         });
 });
 
@@ -193,15 +204,29 @@ Route::middleware(['auth', 'super_admin'])
     ->name('superadmin.')
     ->group(function () {
 
-        // Daftar organisasi
+        // -------------------------------------------------
+        // Manajemen Organisasi
+        // -------------------------------------------------
+
         Route::get('/organizations', [SuperAdminController::class, 'organizationIndex'])
             ->name('organizations.index');
 
-        // Setujui organisasi
         Route::post('/organizations/{organization}/approve', [SuperAdminController::class, 'organizationApprove'])
             ->name('organizations.approve');
 
-        // Tolak organisasi
         Route::post('/organizations/{organization}/reject', [SuperAdminController::class, 'organizationReject'])
             ->name('organizations.reject');
+
+        // -------------------------------------------------
+        // Manajemen Penarikan
+        // -------------------------------------------------
+
+        Route::get('/withdrawals', [SuperAdminController::class, 'withdrawalIndex'])
+            ->name('withdrawals.index');
+
+        Route::post('/withdrawals/{withdrawalRequest}/complete', [SuperAdminController::class, 'withdrawalComplete'])
+            ->name('withdrawals.complete');
+
+        Route::post('/withdrawals/{withdrawalRequest}/reject', [SuperAdminController::class, 'withdrawalReject'])
+            ->name('withdrawals.reject');
     });

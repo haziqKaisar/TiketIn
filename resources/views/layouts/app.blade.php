@@ -105,7 +105,7 @@
                     </a>
 
                     <!-- Navigasi desktop -->
-                    <div class="hidden md:flex items-center gap-2 text-sm font-medium">
+                    <div class="hidden lg:flex items-center gap-2 text-sm font-medium">
                         <a href="{{ route('ticket.check') }}" class="text-white/85 hover:text-white hover:bg-white/10 transition-colors px-4 py-2.5 rounded-lg flex items-center gap-2 min-h-[44px]">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.2-5.2m2.2-5.3a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
                             Cek Pesanan
@@ -117,8 +117,14 @@
                             <a href="{{ route('scan.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Scanner Gerbang</a>
                             @if(auth()->user()->isSuperAdmin())
                                 <a href="{{ route('superadmin.organizations.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Kelola Organisasi</a>
+                                @if(\Illuminate\Support\Facades\Route::has('superadmin.withdrawals.index'))
+                                    <a href="{{ route('superadmin.withdrawals.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Pengajuan Penarikan</a>
+                                @endif
                             @else
                                 <a href="{{ route('admin.organization.edit') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Profil Organisasi</a>
+                                @if(\Illuminate\Support\Facades\Route::has('admin.withdrawals.index'))
+                                    <a href="{{ route('admin.withdrawals.index') }}" class="text-white/85 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center">Penarikan Saldo</a>
+                                @endif
                             @endif
 
                             <form action="{{ route('logout') }}" method="POST" class="m-0">
@@ -141,7 +147,7 @@
                         @click="mobileMenuOpen = !mobileMenuOpen"
                         :aria-expanded="mobileMenuOpen.toString()"
                         aria-controls="mobile-menu"
-                        class="md:hidden grid place-items-center w-11 h-11 -mr-1 text-white rounded-lg hover:bg-white/10 transition-colors"
+                        class="lg:hidden grid place-items-center w-11 h-11 -mr-1 text-white rounded-lg hover:bg-white/10 transition-colors"
                     >
                         <span class="sr-only">Buka menu navigasi</span>
                         <svg x-show="!mobileMenuOpen" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -157,7 +163,7 @@
                     x-transition:enter="transition ease-out duration-150"
                     x-transition:enter-start="opacity-0 -translate-y-1"
                     x-transition:enter-end="opacity-100 translate-y-0"
-                    class="md:hidden pb-4 flex flex-col gap-1 border-t border-white/15 pt-3"
+                    class="lg:hidden pb-4 flex flex-col gap-1 border-t border-white/15 pt-3"
                     style="display:none"
                 >
                     <a href="{{ route('ticket.check') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center gap-2">Cek Pesanan</a>
@@ -166,8 +172,14 @@
                         <a href="{{ route('scan.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Scanner Gerbang</a>
                         @if(auth()->user()->isSuperAdmin())
                             <a href="{{ route('superadmin.organizations.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Kelola Organisasi</a>
+                            @if(\Illuminate\Support\Facades\Route::has('superadmin.withdrawals.index'))
+                                <a href="{{ route('superadmin.withdrawals.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Pengajuan Penarikan</a>
+                            @endif
                         @else
                             <a href="{{ route('admin.organization.edit') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Profil Organisasi</a>
+                            @if(\Illuminate\Support\Facades\Route::has('admin.withdrawals.index'))
+                                <a href="{{ route('admin.withdrawals.index') }}" class="text-white/90 hover:bg-white/10 px-3 py-3 rounded-lg min-h-[44px] flex items-center">Penarikan Saldo</a>
+                            @endif
                         @endif
                         <form action="{{ route('logout') }}" method="POST">
                             @csrf

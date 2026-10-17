@@ -39,6 +39,9 @@
                                 <tr>
                                     <td style="background-color:#525EA7; padding: 16px 20px; color:#FFFFFF;">
                                         <div style="font-size: 11px; opacity: 0.8;">{{ $ticket->ticketCategory->name }}</div>
+                                        @if($ticket->seat)
+                                            <div style="margin-top: 6px;"><span style="display:inline-block; background:#FFC349; color:#111827; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 6px;">Kursi {{ $ticket->seat->label }}</span></div>
+                                        @endif
                                         <div style="font-size: 16px; font-weight: 700; margin-top: 2px;">
                                             {{ $ticket->ticketCategory->event->name }}
                                         </div>

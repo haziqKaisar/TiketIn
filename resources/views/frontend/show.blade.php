@@ -3,6 +3,7 @@
 @section('title', ($event->name ?? 'Detail Event') . ' — TiketIn')
 
 @section('content')
+@php $seatsData = app(\App\Services\SeatMapService::class)->forEvent($event); @endphp
 <div class="max-w-6xl mx-auto px-4 lg:px-8 py-8 md:py-12">
 
     <a href="{{ route('home') }}" class="inline-flex items-center gap-1.5 text-brand-primary font-medium mb-6 hover:underline min-h-[44px]">
@@ -47,7 +48,12 @@
                         @foreach($event->ticketCategories as $category)
                             <div class="border border-gray-100 rounded-xl p-4">
                                 <div class="flex items-center justify-between gap-3 mb-1">
-                                    <h3 class="font-bold text-ink">{{ $category->name }}</h3>
+                                    <h3 class="font-bold text-ink">
+                                        {{ $category->name }}
+                                        @if($category->seating_mode === 'seated')
+                                            <span class="ml-1 align-middle bg-brand-primary-soft text-brand-primary text-[11px] font-bold px-2 py-0.5 rounded-full">Pilih kursi sendiri</span>
+                                        @endif
+                                    </h3>
                                     <span class="text-sm font-bold text-brand-primary shrink-0">Rp {{ number_format($category->price, 0, ',', '.') }}</span>
                                 </div>
                                 @if($category->description)
@@ -66,14 +72,38 @@
                 x-data="{
                     selected: null,
                     quantity: 1,
-                    categories: {{ \Illuminate\Support\Js::from($event->ticketCategories->map(fn($t) => ['id' => $t->id, 'name' => $t->name, 'price' => (int) $t->price, 'quota' => (int) $t->quota])->values()) }},
+                    pickedSeatIds: [],
+                    mapOpen: false,
+                    seatNotice: '',
+                    categories: {{ \Illuminate\Support\Js::from($event->ticketCategories->map(fn($t) => ['id' => $t->id, 'name' => $t->name, 'price' => (int) $t->price, 'quota' => (int) $t->quota, 'seated' => $t->seating_mode === 'seated'])->values()) }},
+                    seats: {{ \Illuminate\Support\Js::from($seatsData) }},
                     get chosen() { return this.categories.find(c => c.id === this.selected) },
+                    get isSeated() { return !!(this.chosen && this.chosen.seated) },
+                    get seatsOfChosen() { return this.isSeated ? this.seats.filter(s => s.category_id === this.chosen.id) : [] },
+                    get availableCount() { return this.seatsOfChosen.filter(s => !s.taken).length },
+                    get qty() { return this.isSeated ? this.pickedSeatIds.length : this.quantity },
+                    get pickedLabels() { return this.seats.filter(s => this.pickedSeatIds.includes(s.id)).map(s => s.label) },
                     get maxQty() { return this.chosen ? Math.min(this.chosen.quota, 10) : 1 },
+                    isPicked(id) { return this.pickedSeatIds.includes(id) },
+                    toggleSeat(seat) {
+                        if (seat.taken) return;
+                        if (this.isPicked(seat.id)) {
+                            this.pickedSeatIds = this.pickedSeatIds.filter(i => i !== seat.id);
+                            this.seatNotice = '';
+                            return;
+                        }
+                        if (this.pickedSeatIds.length >= 10) {
+                            this.seatNotice = 'Maksimal 10 kursi per transaksi.';
+                            return;
+                        }
+                        this.pickedSeatIds.push(seat.id);
+                        this.seatNotice = '';
+                    },
                     formatRp(n) { return 'Rp ' + Number(n).toLocaleString('id-ID') },
                     decQty() { this.quantity = Math.max(1, this.quantity - 1) },
                     incQty() { this.quantity = Math.min(this.maxQty, this.quantity + 1) }
                 }"
-                x-init="$watch('selected', () => quantity = 1)"
+                x-init="$watch('selected', () => { quantity = 1; pickedSeatIds = []; seatNotice = ''; mapOpen = false })"
                 class="bg-white rounded-2xl shadow-soft-lg border border-gray-100 overflow-hidden"
             >
                 <div class="bg-brand-primary px-6 py-5">
@@ -129,7 +159,7 @@
                                         <span>
                                             <span class="block font-semibold text-ink text-sm">{{ $ticket->name }}</span>
                                             <span class="block text-xs text-ink-muted mt-0.5">
-                                                {{ $soldOut ? 'Habis' : 'Sisa ' . $ticket->quota . ' tiket' }}
+                                                {{ $soldOut ? 'Habis' : 'Sisa ' . $ticket->quota . ($ticket->seating_mode === 'seated' ? ' kursi · pilih di denah' : ' tiket') }}
                                             </span>
                                         </span>
                                     </span>
@@ -141,8 +171,84 @@
                         </div>
                     </fieldset>
 
-                    <!-- Jumlah tiket, muncul setelah kategori dipilih -->
-                    <div x-show="chosen" x-cloak>
+                    <!-- Pemilih kursi: muncul untuk kategori bermode "Pilih kursi" -->
+                    <div x-show="isSeated" x-cloak
+                        :class="mapOpen ? 'fixed inset-0 z-[60] bg-ink/70 p-4 sm:p-8 overflow-auto' : ''"
+                        @keydown.escape.window="mapOpen = false"
+                        x-effect="document.body.classList.toggle('overflow-hidden', mapOpen)">
+                        <div :class="mapOpen ? 'bg-white rounded-2xl p-5 max-w-4xl mx-auto' : ''"
+                            :role="mapOpen ? 'dialog' : null" :aria-modal="mapOpen ? 'true' : null" aria-label="Denah kursi">
+
+                            <div class="flex items-center justify-between gap-2 mb-2">
+                                <span class="block text-sm font-semibold text-ink">Pilih Kursi <span class="font-normal text-ink-muted" x-text="'(' + availableCount + ' tersedia)'"></span></span>
+                                @if($event->seat_map_image)
+                                    <button type="button" @click="mapOpen = !mapOpen" class="text-sm font-semibold text-brand-primary hover:underline min-h-[44px] px-2" x-text="mapOpen ? 'Tutup' : 'Perbesar denah'"></button>
+                                @endif
+                            </div>
+
+                            @if($event->seat_map_image)
+                                <div class="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                                    <img src="{{ Storage::url($event->seat_map_image) }}" alt="Denah venue {{ $event->name }}" class="w-full block select-none" draggable="false">
+                                    <template x-for="seat in seatsOfChosen" :key="seat.id">
+                                        <button type="button"
+                                            @click="toggleSeat(seat)"
+                                            :disabled="seat.taken"
+                                            :aria-pressed="isPicked(seat.id).toString()"
+                                            :aria-label="'Kursi ' + seat.label + (seat.taken ? ', sudah dipesan' : (isPicked(seat.id) ? ', dipilih' : ', tersedia'))"
+                                            class="absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-bold grid place-items-center border-2 transition-all focus-visible:ring-2"
+                                            :class="[
+                                                mapOpen ? 'w-9 h-9 text-[11px]' : 'w-6 h-6 text-[9px]',
+                                                seat.taken ? 'bg-gray-300 border-gray-400 text-gray-500 cursor-not-allowed' :
+                                                    (isPicked(seat.id) ? 'bg-brand-accent border-ink text-ink scale-110 z-10' : 'bg-white border-brand-primary text-brand-primary hover:bg-brand-primary-soft')
+                                            ]"
+                                            :style="'left:' + seat.x + '%; top:' + seat.y + '%'">
+                                            <span x-text="mapOpen ? seat.label : ''"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            @endif
+
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted mt-2">
+                                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-white border-2 border-brand-primary"></span>Tersedia</span>
+                                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-brand-accent border-2 border-ink"></span>Dipilih</span>
+                                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-gray-300 border-2 border-gray-400"></span>Sudah dipesan</span>
+                            </div>
+
+                            <!-- Daftar kursi: alternatif denah, target sentuh besar & bisa dipakai keyboard -->
+                            <details class="mt-3" @if(!$event->seat_map_image) open @endif>
+                                <summary class="text-sm font-semibold text-brand-primary cursor-pointer min-h-[44px] flex items-center">Atau pilih dari daftar kursi</summary>
+                                <div class="flex flex-wrap gap-2 mt-2 max-h-48 overflow-y-auto">
+                                    <template x-for="seat in seatsOfChosen" :key="'chip-' + seat.id">
+                                        <button type="button" @click="toggleSeat(seat)" :disabled="seat.taken" :aria-pressed="isPicked(seat.id).toString()"
+                                            class="min-h-[44px] min-w-[52px] px-3 rounded-lg border text-sm font-semibold transition-colors"
+                                            :class="seat.taken ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed line-through' :
+                                                (isPicked(seat.id) ? 'bg-brand-accent border-ink text-ink' : 'bg-white border-gray-300 text-ink hover:border-brand-primary')"
+                                            x-text="seat.label"></button>
+                                    </template>
+                                </div>
+                            </details>
+
+                            <p x-show="availableCount === 0" x-cloak class="text-sm text-rose-600 mt-2">Semua kursi di kategori ini sudah terisi.</p>
+                            <p x-show="seatNotice" x-cloak role="alert" class="text-sm text-rose-600 mt-2" x-text="seatNotice"></p>
+
+                            <div class="mt-3 text-sm" x-show="pickedSeatIds.length > 0" x-cloak>
+                                <span class="text-ink-muted">Kursi dipilih:</span>
+                                <span class="font-bold text-ink" x-text="pickedLabels.join(', ')"></span>
+                            </div>
+
+                            <template x-for="id in pickedSeatIds" :key="'seat-input-' + id">
+                                <input type="hidden" name="seat_ids[]" :value="id">
+                            </template>
+
+                            <button type="button" x-show="mapOpen" x-cloak @click="mapOpen = false"
+                                class="mt-4 w-full min-h-[44px] bg-brand-primary text-white font-semibold rounded-lg hover:bg-brand-primary-dark transition-colors">
+                                Selesai memilih
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Jumlah tiket, muncul setelah kategori (non-kursi) dipilih -->
+                    <div x-show="chosen && !isSeated" x-cloak>
                         <label for="quantity" class="block text-sm font-semibold text-ink mb-2">Jumlah Tiket</label>
                         <div class="flex items-center gap-3">
                             <button type="button" @click="decQty()" :disabled="quantity <= 1"
@@ -190,17 +296,18 @@
                     <!-- Ringkasan singkat, muncul setelah kategori dipilih -->
                     <div x-show="chosen" x-cloak x-transition.opacity.duration.150ms class="pt-4 border-t border-dashed border-gray-200 text-sm space-y-1">
                         <div class="flex items-center justify-between text-ink-muted">
-                            <span x-text="chosen ? chosen.name + ' × ' + quantity : ''"></span>
+                            <span x-text="chosen ? chosen.name + ' × ' + qty : ''"></span>
                             <span x-text="chosen ? formatRp(chosen.price) + '/tiket' : ''"></span>
                         </div>
                         <div class="flex items-center justify-between font-bold text-ink text-base">
                             <span>Total</span>
-                            <span x-text="chosen ? formatRp(chosen.price * quantity) : ''"></span>
+                            <span x-text="chosen ? formatRp(chosen.price * qty) : ''"></span>
                         </div>
                     </div>
 
-                    <button type="submit" class="w-full min-h-[48px] bg-brand-accent text-ink font-bold py-3 rounded-lg hover:bg-brand-accent-dark active:scale-[0.99] transition-all shadow-soft">
-                        Lanjut Pembayaran
+                    <button type="submit" :disabled="isSeated && pickedSeatIds.length === 0"
+                        class="w-full min-h-[48px] bg-brand-accent text-ink font-bold py-3 rounded-lg hover:bg-brand-accent-dark active:scale-[0.99] transition-all shadow-soft disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand-accent">
+                        <span x-text="isSeated && pickedSeatIds.length === 0 ? 'Pilih kursi dulu' : 'Lanjut Pembayaran'"></span>
                     </button>
                     <p class="text-xs text-ink-muted text-center -mt-2">Data kamu aman &amp; hanya dipakai untuk proses tiket.</p>
                 </form>

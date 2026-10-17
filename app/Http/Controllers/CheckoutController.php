@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\InsufficientQuotaException;
 use App\Jobs\SendETicketJob;
 use App\Models\Order;
+use App\Models\Seat;
 use App\Models\Ticket;
 use App\Models\TicketCategory;
 use App\Services\OrderService;
@@ -29,60 +30,104 @@ class CheckoutController extends Controller
             'ticket_category_id' => 'required|exists:ticket_categories,id',
             'payment_method'     => 'required|string',
             'quantity'           => 'nullable|integer|min:1|max:' . self::MAX_QTY_PER_ORDER,
+            'seat_ids'           => 'nullable|array|max:' . self::MAX_QTY_PER_ORDER,
+            'seat_ids.*'         => 'integer|distinct',
         ]);
 
-        $quantity    = (int) $request->input('quantity', 1);
-        $merchantRef = 'TKT-' . strtoupper(Str::random(16));
+        $requestedQuantity = (int) $request->input('quantity', 1);
+        $seatIds           = collect($request->input('seat_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $merchantRef       = 'TKT-' . strtoupper(Str::random(16));
 
         // Semua pengecekan + penulisan data dibungkus 1 transaction dengan
-        // row lock (lockForUpdate) di baris TicketCategory-nya. Ini yang
-        // mencegah race condition: kalau 2 orang checkout tiket terakhir
-        // yang sama nyaris bersamaan, permintaan KEDUA akan menunggu
-        // sampai transaction PERTAMA selesai (commit/rollback) sebelum
-        // dia sendiri baca ulang sisa kuota — jadi tidak mungkin dua-duanya
-        // lolos pengecekan kuota yang sama.
+        // row lock di baris TicketCategory. Karena SEMUA checkout untuk kategori
+        // yang sama harus antre di kunci ini, dua orang yang rebutan tiket
+        // terakhir (atau kursi yang sama) tidak mungkin lolos berbarengan.
         try {
-            [$order, $category, $amount] = DB::transaction(function () use ($request, $quantity, $merchantRef) {
-                $category = TicketCategory::where('id', $request->ticket_category_id)
-                    ->lockForUpdate()
-                    ->first();
+            [$order, $category, $amount, $quantity] = DB::transaction(
+                function () use ($request, $requestedQuantity, $seatIds, $merchantRef) {
+                    $category = TicketCategory::where('id', $request->ticket_category_id)
+                        ->lockForUpdate()
+                        ->first();
 
-                if (! $category) {
-                    throw new InsufficientQuotaException('Kategori tiket tidak ditemukan.');
-                }
+                    if (! $category) {
+                        throw new InsufficientQuotaException('Kategori tiket tidak ditemukan.');
+                    }
 
-                if ($category->quota < $quantity) {
-                    throw new InsufficientQuotaException("Maaf, sisa kuota tiket ini cuma {$category->quota}.");
-                }
+                    $isSeated = $category->seating_mode === 'seated';
 
-                $amount = $category->price * $quantity;
+                    // Kategori "seated": jumlah tiket = jumlah kursi yang dipilih.
+                    // (Angka quantity dari form diabaikan, tidak dipercaya.)
+                    $quantity = $isSeated ? $seatIds->count() : $requestedQuantity;
 
-                $order = Order::create([
-                    'merchant_ref'   => $merchantRef,
-                    'customer_name'  => $request->customer_name,
-                    'customer_email' => $request->customer_email,
-                    'customer_phone' => $request->customer_phone,
-                    'total_amount'   => $amount,
-                    'payment_method' => $request->payment_method,
-                    'status'         => 'UNPAID',
-                ]);
+                    if ($isSeated && $quantity < 1) {
+                        throw new InsufficientQuotaException('Pilih minimal 1 kursi dulu di denah.');
+                    }
 
-                for ($i = 0; $i < $quantity; $i++) {
-                    Ticket::create([
-                        'order_id'           => $order->id,
-                        'ticket_category_id' => $category->id,
-                        'ticket_code'        => 'QR-' . strtoupper(Str::random(8)),
-                        'status'             => 'PENDING',
+                    if ($category->quota < $quantity) {
+                        throw new InsufficientQuotaException("Maaf, sisa kuota tiket ini cuma {$category->quota}.");
+                    }
+
+                    $seats = collect();
+
+                    if ($isSeated) {
+                        $seats = Seat::where('ticket_category_id', $category->id)
+                            ->whereIn('id', $seatIds)
+                            ->get();
+
+                        if ($seats->count() !== $seatIds->count()) {
+                            throw new InsufficientQuotaException('Kursi yang dipilih tidak valid. Muat ulang halaman lalu coba lagi.');
+                        }
+
+                        $takenIds = Ticket::whereIn('seat_id', $seatIds)->pluck('seat_id');
+
+                        if ($takenIds->isNotEmpty()) {
+                            $labels = $seats->whereIn('id', $takenIds)->pluck('label')->implode(', ');
+                            throw new InsufficientQuotaException("Kursi {$labels} baru saja dipesan orang lain. Pilih kursi lain ya.");
+                        }
+                    }
+
+                    $amount = $category->price * $quantity;
+
+                    $order = Order::create([
+                        'merchant_ref'   => $merchantRef,
+                        'customer_name'  => $request->customer_name,
+                        'customer_email' => $request->customer_email,
+                        'customer_phone' => $request->customer_phone,
+                        'total_amount'   => $amount,
+                        'payment_method' => $request->payment_method,
+                        'status'         => 'UNPAID',
                     ]);
+
+                    // Satu baris Ticket per tiket. Untuk kategori seated, tiap tiket
+                    // menunjuk ke satu kursi. Pakai unguarded supaya seat_id pasti
+                    // tersimpan walau $fillable di model Ticket belum diperbarui.
+                    $ticketSeatIds = $isSeated ? $seats->pluck('id')->all() : array_fill(0, $quantity, null);
+
+                    foreach ($ticketSeatIds as $seatId) {
+                        $attributes = [
+                            'order_id'           => $order->id,
+                            'ticket_category_id' => $category->id,
+                            'ticket_code'        => 'QR-' . strtoupper(Str::random(8)),
+                            'status'             => 'PENDING',
+                        ];
+
+                        if ($seatId !== null) {
+                            $attributes['seat_id'] = $seatId;
+                        }
+
+                        Ticket::unguarded(fn () => Ticket::create($attributes));
+                    }
+
+                    $category->decrement('quota', $quantity);
+
+                    return [$order, $category, $amount, $quantity];
                 }
-
-                // Masih di dalam transaction & row masih terkunci -- aman.
-                $category->decrement('quota', $quantity);
-
-                return [$order, $category, $amount];
-            });
+            );
         } catch (InsufficientQuotaException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', $e->getMessage())->withInput();
         } catch (\Throwable $e) {
             report($e);
             return back()->with('error', 'Gagal menyimpan pesanan, coba lagi.');
@@ -128,8 +173,7 @@ class CheckoutController extends Controller
             }
         }
 
-        // Tripay gagal: batalkan semua yang tadi dibuat (kuota, order, tiket)
-        // lewat service yang sama dipakai webhook & cleanup job.
+        // Tripay gagal: batalkan semuanya (kuota, tiket, kursi kembali bebas).
         app(OrderService::class)->releaseUnpaidOrder($order, 'FAILED');
 
         $errorMessage = $response->json('message') ?? 'Gagal terhubung ke server pembayaran.';

@@ -18,6 +18,9 @@
                 <span class="inline-block px-3 py-1 bg-white/15 rounded-full text-xs font-semibold mb-3 w-max">
                     Kategori {{ $ticket->ticketCategory->name }}
                 </span>
+                @if($ticket->seat)
+                    <p class="mb-2"><span class="inline-block bg-brand-accent text-ink text-sm font-bold px-3 py-1 rounded-md">Kursi {{ $ticket->seat->label }}</span></p>
+                @endif
                 <h2 class="text-xl md:text-2xl font-extrabold mb-2 leading-snug">{{ $ticket->ticketCategory->event->name }}</h2>
 
                 <div class="mt-4 space-y-2 text-sm text-white/85">

@@ -45,6 +45,10 @@
                         @if($order->tickets->isNotEmpty())
                             <p class="font-semibold text-ink">{{ $order->tickets->first()->ticketCategory->event->name }}</p>
                             <p class="text-xs text-ink-muted">{{ $order->tickets->count() }}x {{ $order->tickets->first()->ticketCategory->name }}</p>
+                            @php $seatLabels = $order->tickets->map(fn ($t) => optional($t->seat)->label)->filter()->implode(', '); @endphp
+                            @if($seatLabels)
+                                <p class="text-xs text-brand-primary font-semibold">Kursi: {{ $seatLabels }}</p>
+                            @endif
                         @endif
                     </td>
                     <td class="p-4 font-bold text-ink">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
@@ -57,6 +61,7 @@
                     </td>
                     <td class="p-4 text-center">
                         @if($order->status === 'UNPAID')
+                            @if(auth()->user()->isSuperAdmin())
                             <form action="{{ route('admin.orders.markPaid', $order->id) }}" method="POST" onsubmit="return confirm('Tandai pesanan ini sebagai LUNAS?');">
                                 @csrf
                                 <button type="submit" class="inline-flex items-center gap-1.5 min-h-[36px] bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-700 active:scale-[0.97] transition-all">
@@ -64,6 +69,9 @@
                                     Set Lunas
                                 </button>
                             </form>
+                            @else
+                            <span class="text-xs text-ink-muted">Menunggu pembayaran</span>
+                            @endif
                         @else
                             <a href="{{ route('ticket.show', $order->merchant_ref) }}" class="text-brand-primary text-xs font-bold hover:underline">
                                 Lihat Tiket
@@ -97,18 +105,26 @@
             @if($order->tickets->isNotEmpty())
                 <p class="text-sm text-ink">{{ $order->tickets->first()->ticketCategory->event->name }}</p>
                 <p class="text-xs text-ink-muted">{{ $order->tickets->count() }}x {{ $order->tickets->first()->ticketCategory->name }}</p>
+                            @php $seatLabels = $order->tickets->map(fn ($t) => optional($t->seat)->label)->filter()->implode(', '); @endphp
+                            @if($seatLabels)
+                                <p class="text-xs text-brand-primary font-semibold">Kursi: {{ $seatLabels }}</p>
+                            @endif
             @endif
 
             <div class="flex items-center justify-between mt-3 pt-3 border-t border-dashed border-gray-200">
                 <span class="font-bold text-ink">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</span>
 
                 @if($order->status === 'UNPAID')
+                    @if(auth()->user()->isSuperAdmin())
                     <form action="{{ route('admin.orders.markPaid', $order->id) }}" method="POST" onsubmit="return confirm('Tandai pesanan ini sebagai LUNAS?');">
                         @csrf
                         <button type="submit" class="inline-flex items-center gap-1.5 min-h-[36px] bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-700 active:scale-[0.97] transition-all">
                             Set Lunas
                         </button>
                     </form>
+                    @else
+                    <span class="text-xs text-ink-muted">Menunggu pembayaran</span>
+                    @endif
                 @else
                     <a href="{{ route('ticket.show', $order->merchant_ref) }}" class="text-brand-primary text-xs font-bold hover:underline">
                         Lihat Tiket

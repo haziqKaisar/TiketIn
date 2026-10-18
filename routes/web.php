@@ -1,4 +1,3 @@
-
 <?php
 
 use Illuminate\Support\Facades\Route;
@@ -116,10 +115,8 @@ Route::middleware(['auth', 'org_approved'])->group(function () {
     Route::get('/scan', [FrontEndController::class, 'scanIndex'])
         ->name('scan.index');
 
-    Route::post('/scan/validate', [
-        FrontEndController::class,
-        'scanValidate',
-    ])->name('scan.validate');
+    Route::post('/scan/validate', [FrontEndController::class, 'scanValidate'])
+        ->name('scan.validate');
 
     // Panel admin
     Route::prefix('admin')
@@ -176,7 +173,7 @@ Route::middleware(['auth', 'org_approved'])->group(function () {
                 'destroy',
             ])->name('categories.destroy');
 
-            // Peta kursi
+            // Editor denah dan kursi
             Route::get('/events/{event}/seats', [
                 SeatMapController::class,
                 'edit',
@@ -187,11 +184,25 @@ Route::middleware(['auth', 'org_approved'])->group(function () {
                 'uploadImage',
             ])->name('events.seatmap.upload');
 
+            // Tambah satu kursi
             Route::post('/events/{event}/seats', [
                 SeatMapController::class,
                 'storeSeat',
             ])->name('events.seats.store');
 
+            // Tambah kursi secara massal
+            Route::post('/events/{event}/seats/bulk', [
+                SeatMapController::class,
+                'storeBulk',
+            ])->name('events.seats.bulk');
+
+            // Pindahkan banyak kursi ke kategori lain
+            Route::patch('/events/{event}/seats/bulk-category', [
+                SeatMapController::class,
+                'bulkAssignCategory',
+            ])->name('events.seats.bulk-category');
+
+            // Hapus satu kursi
             Route::delete('/seats/{seat}', [
                 SeatMapController::class,
                 'destroySeat',
@@ -206,7 +217,7 @@ Route::middleware(['auth', 'org_approved'])->group(function () {
                 'orderMarkPaid',
             ])->name('orders.markPaid');
 
-            // Penarikan dana
+            // Penarikan dana organisasi
             Route::get('/penarikan', [WithdrawalController::class, 'index'])
                 ->name('withdrawals.index');
 
@@ -243,7 +254,7 @@ Route::middleware(['auth', 'super_admin'])
             'organizationReject',
         ])->name('organizations.reject');
 
-        // Manajemen penarikan
+        // Manajemen penarikan dana
         Route::get('/withdrawals', [
             SuperAdminController::class,
             'withdrawalIndex',
